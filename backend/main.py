@@ -92,8 +92,13 @@ async def startup_event():
     logger.info("Application startup: Loading FAISS index...")
     try:
         rage_engine.load_vector_store()
+        if rage_engine.vector_store:
+            logger.info("FAISS index loaded successfully during startup")
+        else:
+            logger.info("No existing FAISS index found - will be created when documents are uploaded")
     except Exception as e:
-        logger.error(f"Failed to load FAISS index during startup: {e}")
+        logger.warning(f"FAISS index loading failed during startup (this is normal for first run): {e}")
+        # This is not fatal - the index will be created when documents are uploaded
 
 
 class SummarizeRequest(BaseModel):

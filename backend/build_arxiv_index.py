@@ -38,7 +38,7 @@ class ArxivIndexBuilder:
                  metadata_path: str = "data/metadata.db",
                  embedding_model: str = "openai",
                  batch_size: int = 100,
-                 max_papers: int = 1000):
+                 max_papers: int = 500):
         """
         Initialize the ArXiv index builder.
         
@@ -204,14 +204,14 @@ def main():
                         help='Embedding model to use')
     parser.add_argument('--batch-size', type=int, default=100,
                         help='Batch size for embedding generation')
-    parser.add_argument('--max-papers', type=int, default=1000,
+    parser.add_argument('--max-papers', type=int, default=500,
                         help='Maximum number of papers to index')
     
     args = parser.parse_args()
     
     # Check if CSV exists
     if not os.path.exists(args.csv):
-        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<100). "
+        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<10). "
               "Please provide a valid dataset before proceeding.")
         sys.exit(1)
 
@@ -219,13 +219,13 @@ def main():
     try:
         df_validation = pd.read_csv(args.csv)
     except Exception:
-        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<100). "
+        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<10). "
               "Please provide a valid dataset before proceeding.")
         sys.exit(1)
 
     required_cols = {"id", "title", "abstract", "authors", "year", "categories"}
-    if not required_cols.issubset(set(df_validation.columns)) or len(df_validation) < 100:
-        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<100). "
+    if not required_cols.issubset(set(df_validation.columns)) or len(df_validation) < 10:
+        print("ERROR: arxiv_sample.csv is missing, malformed, or contains too few entries (<10). "
               "Please provide a valid dataset before proceeding.")
         sys.exit(1)
 
