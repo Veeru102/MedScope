@@ -19,6 +19,7 @@ from document_processor import DocumentProcessor
 from rag_engine import RAGEngine
 from enhanced_document_processor import EnhancedDocumentProcessor
 from llm_services import LLMService
+from arxiv_search import ArxivSearchService
 from langchain_core.documents import Document # Import Document
 from langchain_community.document_loaders import PyMuPDFLoader # Updated import
 
@@ -76,6 +77,14 @@ llm_service = LLMService()
 
 # Initialize RAGEngine globally
 rage_engine = RAGEngine()
+
+# Initialize ArxivSearchService
+try:
+    arxiv_search = ArxivSearchService()
+    logger.info("ArxivSearchService initialized successfully")
+except Exception as e:
+    logger.warning(f"ArxivSearchService initialization failed: {e}")
+    arxiv_search = None
 
 # Define startup event to load the FAISS index
 @app.on_event("startup")
@@ -279,7 +288,30 @@ async def summarize_paper(request: SummarizeRequest):
             logger.error(f'Summarization failed for {filename}: {summary_result.get("error")}')
             raise HTTPException(status_code=500, detail=f"Summarization failed: {summary_result.get('error')}")
 
-        return {"message": summary_result.get("summary", "Summarization failed"), "audience": request.audience_type}
+        # Search for related papers using arXiv index
+        related_papers = []
+        if arxiv_search and arxiv_search.index is not None:
+            try:
+                # Use the summary or first few chunks as query
+                query_text = summary_result.get("summary", "")
+                if not query_text:
+                    # Fallback to using first few chunks
+                    query_text = '\n'.join([doc.page_content[:500] for doc in document_chunks[:3]])
+                
+                # Search for similar papers
+                similar_papers = arxiv_search.search_similar_papers(query_text, k=3)
+                related_papers = arxiv_search.format_results_for_display(similar_papers)
+                logger.info(f"Found {len(related_papers)} related papers for {filename}")
+                
+            except Exception as e:
+                logger.error(f"Error searching for related papers: {e}")
+                # Continue without related papers if search fails
+        
+        return {
+            "message": summary_result.get("summary", "Summarization failed"), 
+            "audience": request.audience_type,
+            "related_papers": related_papers
+        }
         
     except Exception as e:
         logger.error(f"Error summarizing {filename}: {e}")
@@ -754,6 +786,60 @@ async def debug_retrieval(query: str, k: Optional[int] = 3):
     except Exception as e:
         logger.error(f"Retrieval debug failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/refresh-arxiv-index")
+async def refresh_arxiv_index(
+    csv_file: Optional[UploadFile] = File(None),
+    max_papers: Optional[int] = 1000,
+    embedding_model: Optional[str] = "openai"
+):
+    """
+    Refresh the arXiv index with a new dataset.
+    Can either upload a CSV file or use the default arxiv_sample.csv
+    """
+    try:
+        # Save uploaded file if provided
+        csv_path = "backend/data/arxiv_sample.csv"
+        if csv_file:
+            contents = await csv_file.read()
+            with open(csv_path, "wb") as f:
+                f.write(contents)
+            logger.info(f"Saved uploaded CSV to {csv_path}")
+        
+        # Check if CSV exists
+        if not os.path.exists(csv_path):
+            raise HTTPException(
+                status_code=400, 
+                detail="No arXiv dataset found. Please upload a CSV file or place arxiv_sample.csv in the data directory."
+            )
+        
+        # Import and run the index builder
+        from build_arxiv_index import ArxivIndexBuilder
+        
+        builder = ArxivIndexBuilder(
+            csv_path=csv_path,
+            embedding_model=embedding_model,
+            max_papers=max_papers
+        )
+        
+        # Build index in background to avoid timeout
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, builder.build_index)
+        
+        # Reload the search service
+        global arxiv_search
+        arxiv_search = ArxivSearchService(embedding_model=embedding_model)
+        
+        return {
+            "message": "arXiv index refreshed successfully",
+            "papers_indexed": max_papers,
+            "embedding_model": embedding_model
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing arXiv index: {e}")
+        raise HTTPException(status_code=500, detail=f"Error refreshing index: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

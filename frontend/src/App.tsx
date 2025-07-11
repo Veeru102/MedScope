@@ -3,6 +3,7 @@ import PDFViewer from './components/PDFViewer';
 import AudienceSelector from './components/AudienceSelector';
 import type { AudienceType } from './components/AudienceSelector';
 import HighlightableText from './components/HighlightableText';
+import RelatedPapers from './components/RelatedPapers';
 
 // Placeholder component for the PDF viewer area - Keep for future use
 // @ts-ignore
@@ -627,6 +628,7 @@ const App: React.FC = () => {
   const [selectedAudience, setSelectedAudience] = useState<AudienceType>('clinician');
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [relatedDocuments, setRelatedDocuments] = useState<any[]>([]);
+  const [arxivRelatedPapers, setArxivRelatedPapers] = useState<Record<string, any[]>>({});
 
 
   const handleUpload = async (file: File) => {
@@ -686,6 +688,10 @@ const App: React.FC = () => {
       const data = await res.json();
       setSummaries((prev) => ({ ...prev, [filename]: data.message }));
       
+      // Store arXiv related papers if available
+      if (data.related_papers && data.related_papers.length > 0) {
+        setArxivRelatedPapers((prev) => ({ ...prev, [filename]: data.related_papers }));
+      }
 
     } catch (err) {
       console.error("Summarization error:", err);
@@ -830,10 +836,17 @@ const App: React.FC = () => {
 
                 {/* Display summary only if ONE file is selected and summarized */}
                 {selectedFiles.length === 1 && summaries[selectedFiles[0]] && summaries[selectedFiles[0]] !== "Summarizing..." && (
-                   <SummaryDisplay 
-                     summary={summaries[selectedFiles[0]]} 
-                     filename={selectedFiles[0]}
-                   />
+                   <>
+                     <SummaryDisplay 
+                       summary={summaries[selectedFiles[0]]} 
+                       filename={selectedFiles[0]}
+                     />
+                     
+                     {/* Display arXiv related papers if available */}
+                     {arxivRelatedPapers[selectedFiles[0]] && (
+                       <RelatedPapers papers={arxivRelatedPapers[selectedFiles[0]]} />
+                     )}
+                   </>
                 )}
                  {/* Chat takes remaining vertical space below summary if visible */}
                 {/* Ensure chat container grows */} 

@@ -86,7 +86,6 @@ Structure your summary with these sections:
 - **Methodology**: How the study was conducted
 - **Major Findings**: Key results and outcomes
 - **Limitations**: Study limitations and caveats
-- **Suggested Related Papers**: 2-3 papers that {audience} might find relevant
 
 Paper content:
 {structured_text}"""

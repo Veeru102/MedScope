@@ -3,6 +3,7 @@ import os
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -120,7 +121,10 @@ class RAGEngine:
             # Use retry logic for vector store creation
             self.vector_store = await retry_with_exponential_backoff(
                 self._create_vector_store_async,
-                documents
+                3,  # max_retries
+                1,  # initial_delay
+                2,  # backoff_factor
+                documents  # *args
             )
             self.save_vector_store()
             logger.info("Vector store created successfully")
@@ -260,15 +264,16 @@ class RAGEngine:
             # Create the prompt template
             prompt = ChatPromptTemplate.from_messages([
                 ("system", "You are a helpful medical research assistant. Use the following context to answer the question. If you don't know the answer, say so."),
-                ("human", "Context: {context}\n\nQuestion: {question}")
+                ("human", "Context: {context}\n\nQuestion: {input}")
             ])
 
-            # Create the chain
+            # Create the document processing chain
+            question_answer_chain = create_stuff_documents_chain(llm, prompt)
+            
+            # Create the retrieval chain
             self.qa_chain = create_retrieval_chain(
                 self.vector_store.as_retriever(),
-                prompt=prompt,
-                llm=llm,
-                memory=self.memory
+                question_answer_chain
             )
             
             logger.info("QA chain setup complete")
@@ -298,7 +303,7 @@ class RAGEngine:
             }
 
         try:
-            result = await self.qa_chain.ainvoke({"question": question})
+            result = await self.qa_chain.ainvoke({"input": question})
             return {
                 "answer": result.get("answer", ""),
                 "sources": [
@@ -306,7 +311,7 @@ class RAGEngine:
                         "content": doc.page_content,
                         "metadata": doc.metadata
                     }
-                    for doc in result.get("source_documents", [])
+                    for doc in result.get("context", [])
                 ]
             }
         except Exception as e:
@@ -318,6 +323,9 @@ class RAGEngine:
         """Make a rate-limited chat completion request"""
         return await retry_with_exponential_backoff(
             self.openai_client.chat.completions.create,
+            3,  # max_retries
+            1,  # initial_delay
+            2,  # backoff_factor
             model=model_name,
             messages=messages,
             temperature=temperature
@@ -345,7 +353,6 @@ class RAGEngine:
 - Methodology
 - Major findings
 - Limitations
-Also, infer the field of study and suggest 2-3 related papers if possible.
 
 Paper content:
 {full_text}
