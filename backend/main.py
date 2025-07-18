@@ -81,21 +81,45 @@ llm_service = LLMService()
 # Initialize RAGEngine globally
 rage_engine = RAGEngine()
 
+# We'll use arxiv_state.is_initialized from arxiv_search module to track readiness
+
 # Define startup event to load the FAISS index
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application startup: Loading FAISS index...")
     try:
-        rage_engine.load_vector_store()
+        # Non-blocking FAISS index load
+        asyncio.create_task(load_faiss_index_background())
     except Exception as e:
-        logger.error(f"Failed to load FAISS index during startup: {e}")
+        logger.error(f"Failed to start FAISS index loading task: {e}")
     
-    # Initialize arXiv search system
-    logger.info("Application startup: Initializing arXiv search...")
+    # Initialize arXiv search system in background
+    logger.info("Application startup: Scheduling arXiv search initialization...")
     try:
-        await startup_arxiv_search()
+        # Non-blocking arXiv search initialization
+        asyncio.create_task(initialize_arxiv_search_background())
     except Exception as e:
-        logger.error(f"Failed to initialize arXiv search during startup: {e}")
+        logger.error(f"Failed to schedule arXiv search initialization: {e}")
+    
+    logger.info("Application startup completed - server ready to accept connections")
+
+async def load_faiss_index_background():
+    """Load FAISS index in the background without blocking startup"""
+    try:
+        logger.info("Background task: Loading FAISS index...")
+        rage_engine.load_vector_store()
+        logger.info("Background task: FAISS index loaded successfully")
+    except Exception as e:
+        logger.error(f"Background task: Failed to load FAISS index: {e}")
+
+async def initialize_arxiv_search_background():
+    """Initialize arXiv search in the background without blocking startup"""
+    try:
+        logger.info("Background task: Starting arXiv search initialization...")
+        await startup_arxiv_search()
+        logger.info("Background task: ArXiv search initialized successfully")
+    except Exception as e:
+        logger.error(f"Background task: Failed to initialize arXiv search: {e}")
 
 
 class SummarizeRequest(BaseModel):
@@ -131,6 +155,21 @@ class DeleteRequest(BaseModel):
 @app.get("/")
 async def root():
     return {"message": "Welcome to MedCopilot API"}
+
+@app.get("/healthz")
+async def health_check():
+    """
+    Health check endpoint for monitoring service readiness
+    """
+    from arxiv_search import arxiv_state
+    
+    return {
+        "status": "ok", 
+        "arxiv_ready": arxiv_state.is_initialized,
+        "arxiv_loading": arxiv_state.is_loading,
+        "arxiv_papers": arxiv_state.total_papers,
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.get("/files/{filename}")
 async def serve_pdf(filename: str):

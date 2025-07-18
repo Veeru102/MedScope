@@ -116,12 +116,12 @@ async def search_arxiv_papers(request: ArxivSearchRequest):
     """
     logger.info(f"ArXiv search request: '{request.query}' (limit: {request.limit})")
     
-    # Check if system is initialized
+    # Check if system is ready
     if not arxiv_state.is_initialized:
         if arxiv_state.is_loading:
             raise HTTPException(
                 status_code=503, 
-                detail="ArXiv search system is still loading. Please try again in a moment."
+                detail="ArXiv index is warming up. Try again shortly."
             )
         else:
             raise HTTPException(
@@ -207,9 +207,9 @@ async def startup_arxiv_search():
     Startup function to initialize arXiv search system
     Call this from your main FastAPI app's startup event
     """
-    logger.info("Starting arXiv search initialization during app startup...")
+    logger.info("Starting arXiv search initialization...")
     
-    # Run initialization in background to avoid blocking app startup
-    asyncio.create_task(initialize_arxiv_search())
+    # Run initialization directly since this is already called in a background task
+    await initialize_arxiv_search()
     
-    logger.info("ArXiv search initialization task created") 
+    logger.info("ArXiv search initialization completed") 
