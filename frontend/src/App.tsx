@@ -193,9 +193,6 @@ const SummaryDisplay: React.FC<{ summary: string | null, filename: string }> = (
   const [loadingSourceEvidence, setLoadingSourceEvidence] = useState(false);
   const [showExplanationResult, setShowExplanationResult] = useState(false);
   const [showSourceEvidenceResult, setShowSourceEvidenceResult] = useState(false);
-  const [similarPapers, setSimilarPapers] = useState<any[]>([]);
-  const [loadingSimilarPapers, setLoadingSimilarPapers] = useState(false);
-  const [showSimilarPapers, setShowSimilarPapers] = useState(false);
 
   // Handle question-based highlighting (improved functionality)
   const handleTextHighlight = async (selectedText: string, context: string, question: string) => {
@@ -260,42 +257,6 @@ const SummaryDisplay: React.FC<{ summary: string | null, filename: string }> = (
       });
     } finally {
       setLoadingSourceEvidence(false);
-    }
-  };
-
-  // Handle finding similar research papers
-  const handleFindSimilarPapers = async () => {
-    setLoadingSimilarPapers(true);
-    setShowSimilarPapers(true);
-    setShowExplanationResult(false); // Hide other results
-    setShowSourceEvidenceResult(false);
-    
-    try {
-      // Extract abstract from summary - use first few sentences as query
-      const extractedQuery = summary ? summary.substring(0, 500) : '';
-      
-      if (!extractedQuery.trim()) {
-        throw new Error('No content available for similarity search');
-      }
-      
-      const response = await fetch(`${BACKEND_URL}/arxiv/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query: extractedQuery,
-          limit: 5
-        })
-      });
-      
-      if (!response.ok) throw new Error('Failed to fetch similar papers');
-      const data = await response.json();
-      setSimilarPapers(data.papers || []);
-    } catch (error) {
-      console.error('Error fetching similar papers:', error);
-      setSimilarPapers([]);
-      // You could add a toast notification here
-    } finally {
-      setLoadingSimilarPapers(false);
     }
   };
 
@@ -480,109 +441,15 @@ const SummaryDisplay: React.FC<{ summary: string | null, filename: string }> = (
           )}
         </div>
       )}
-
-      {/* Similar Papers Result */}
-      {showSimilarPapers && (
-        <div className="mt-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
-          <div className="flex justify-between items-start mb-3">
-            <h4 className="text-sm font-semibold text-purple-800">Similar Research Papers</h4>
-            <button
-              onClick={() => {
-                setShowSimilarPapers(false);
-                setSimilarPapers([]);
-              }}
-              className="text-purple-600 hover:text-purple-800 text-sm"
-            >
-              Close
-            </button>
-          </div>
-          {loadingSimilarPapers ? (
-            <div className="text-sm text-purple-700">Searching for similar papers...</div>
-          ) : similarPapers.length === 0 ? (
-            <div className="text-sm text-red-600">No similar papers found. Try again later.</div>
-          ) : (
-            <div className="space-y-4">
-              {similarPapers.map((paper, index) => (
-                <div key={paper.id || index} className="bg-white rounded-lg p-4 border border-purple-200 shadow-sm">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                        #{paper.rank || index + 1}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        Similarity: {((paper.similarity_score || 0) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    {paper.arxiv_url && (
-                      <a
-                        href={paper.arxiv_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:text-blue-800 underline"
-                      >
-                        View on arXiv
-                      </a>
-                    )}
-                  </div>
-                  
-                  <h5 className="font-semibold text-gray-800 mb-2 text-sm leading-tight">
-                    {paper.title || 'Untitled Paper'}
-                  </h5>
-                  
-                  <div className="text-sm text-gray-600 leading-relaxed">
-                    {paper.abstract ? (
-                      paper.abstract.length > 300 ? (
-                        <>
-                          {paper.abstract.substring(0, 300)}...
-                          <button className="text-purple-600 hover:text-purple-800 ml-1 text-xs">
-                            Read more
-                          </button>
-                        </>
-                      ) : (
-                        paper.abstract
-                      )
-                    ) : (
-                      'No abstract available'
-                    )}
-                  </div>
-                  
-                  {paper.id && (
-                    <div className="mt-2 text-xs text-gray-400">
-                      arXiv ID: {paper.id}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       
        {/* Action buttons */}
-       <div className="mt-4 flex justify-end gap-3">
+       <div className="mt-4 flex justify-end">
            <button 
-             onClick={handleFindSimilarPapers} 
-             disabled={loadingSimilarPapers}
-             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-           >
-             {loadingSimilarPapers ? (
-               <>
-                 <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l2-2.647z"></path>
-                 </svg>
-                 Finding Similar Papers...
-               </>
-             ) : (
-               'Find Similar Research'
-             )}
-           </button>
-           <button 
-             onClick={handleCopyToClipboard} 
-             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors duration-200 text-sm"
-           >
-             Copy Summary
-           </button>
+           onClick={handleCopyToClipboard} 
+           className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors duration-200 text-sm"
+        >
+           Copy Summary
+        </button>
        </div>
     </div>
   );
