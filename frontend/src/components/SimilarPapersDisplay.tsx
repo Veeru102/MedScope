@@ -64,7 +64,7 @@ const useSimilarPapers = (backendUrl: string) => {
 
 const SimilarPapersDisplay: React.FC<SimilarPapersDisplayProps> = ({ 
   summary, 
-  filename, 
+  filename, // Kept for future use but currently unused
   backendUrl 
 }) => {
   const { papers, loading, error, searchPerformed, searchSimilarPapers } = useSimilarPapers(backendUrl);
@@ -183,7 +183,7 @@ const SimilarPapersDisplay: React.FC<SimilarPapersDisplayProps> = ({
                 </button>
               </div>
               
-              {papers.map((paper, index) => (
+              {papers.map((paper, _index) => ( // index renamed to _index as it's currently unused
                 <div 
                   key={paper.id} 
                   className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
