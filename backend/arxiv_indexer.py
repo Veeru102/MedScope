@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from sentence_transformers import SentenceTransformer
 import faiss
 import logging
@@ -32,6 +33,12 @@ def build_faiss_index(dataframe: pd.DataFrame) -> Tuple[faiss.IndexFlatIP, pd.Da
     if missing_columns:
         raise ValueError(f"Missing required columns: {missing_columns}")
     
+    # Apply development limit to conserve memory
+    limit = int(os.environ.get("ARXIV_LOAD_LIMIT", "1000"))
+    if limit > 0 and len(dataframe) > limit:
+        logger.info(f"Limiting to {limit} papers to conserve memory")
+        dataframe = dataframe.head(limit)
+    
     logger.info(f"Building FAISS index for {len(dataframe)} papers")
     
     # Clean the data and prepare text for embedding
@@ -48,17 +55,17 @@ def build_faiss_index(dataframe: pd.DataFrame) -> Tuple[faiss.IndexFlatIP, pd.Da
     
     logger.info("Loading SentenceTransformer model...")
     
-    # Load the sentence transformer model
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    # Load the sentence transformer model with minimal memory footprint
+    model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
     
     logger.info("Generating embeddings...")
     
-    # Generate embeddings for all texts
+    # Generate embeddings for all texts in smaller batches to reduce memory usage
     embeddings = model.encode(
         combined_texts,
         convert_to_numpy=True,
         show_progress_bar=True,
-        batch_size=32
+        batch_size=16  # Smaller batch size to reduce memory usage
     )
     
     # Normalize embeddings for cosine similarity

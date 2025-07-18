@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -65,13 +66,13 @@ async def initialize_arxiv_search():
         
         arxiv_state.is_loading = True
         logger.info("Starting arXiv search initialization...")
-        
+    
     try:
-        # Pre-download and cache the model to avoid timeout issues
-        logger.info("Pre-downloading SentenceTransformer model...")
-        SentenceTransformer("all-MiniLM-L6-v2", cache_folder="/tmp/sentence_transformers")
+        # Use environment variable to limit the number of papers for memory constraints
+        limit = int(os.environ.get("ARXIV_LOAD_LIMIT", "1000"))  # Default to 1000 papers for Render
+        logger.info(f"Using ARXIV_LOAD_LIMIT={limit} to conserve memory")
         
-        # Load arXiv metadata
+        # Load arXiv metadata with limit
         logger.info("Loading arXiv metadata from Kaggle...")
         metadata_df = load_arxiv_metadata()
         
@@ -81,13 +82,14 @@ async def initialize_arxiv_search():
         
         logger.info(f"Loaded {len(metadata_df)} arXiv papers")
         
-        # Build FAISS index
+        # Build FAISS index - load model only when needed
         logger.info("Building FAISS index for arXiv papers...")
         faiss_index, processed_df = build_faiss_index(metadata_df)
         
-        # Load sentence transformer model
+        # Load sentence transformer model with minimal memory footprint
         logger.info("Loading SentenceTransformer model...")
-        sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+        model_name = "all-MiniLM-L6-v2"
+        sentence_model = SentenceTransformer(model_name, device="cpu")
         
         # Update global state
         with arxiv_state.lock:
