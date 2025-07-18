@@ -3,6 +3,7 @@ import PDFViewer from './components/PDFViewer';
 import AudienceSelector from './components/AudienceSelector';
 import type { AudienceType } from './components/AudienceSelector';
 import HighlightableText from './components/HighlightableText';
+import SimilarPapersDisplay from './components/SimilarPapersDisplay';
 
 // Placeholder component for the PDF viewer area - Keep for future use
 // @ts-ignore
@@ -259,9 +260,6 @@ const SummaryDisplay: React.FC<{ summary: string | null, filename: string }> = (
       setLoadingSourceEvidence(false);
     }
   };
-
-
-
 
 
 
@@ -833,6 +831,15 @@ const App: React.FC = () => {
                    <SummaryDisplay 
                      summary={summaries[selectedFiles[0]]} 
                      filename={selectedFiles[0]}
+                   />
+                )}
+                
+                {/* Display similar papers search only if ONE file is selected and summarized */}
+                {selectedFiles.length === 1 && summaries[selectedFiles[0]] && summaries[selectedFiles[0]] !== "Summarizing..." && (
+                   <SimilarPapersDisplay 
+                     summary={summaries[selectedFiles[0]]} 
+                     filename={selectedFiles[0]}
+                     backendUrl={BACKEND_URL}
                    />
                 )}
                  {/* Chat takes remaining vertical space below summary if visible */}
