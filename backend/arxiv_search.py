@@ -65,8 +65,12 @@ async def initialize_arxiv_search():
         
         arxiv_state.is_loading = True
         logger.info("Starting arXiv search initialization...")
-    
+        
     try:
+        # Pre-download and cache the model to avoid timeout issues
+        logger.info("Pre-downloading SentenceTransformer model...")
+        SentenceTransformer("all-MiniLM-L6-v2", cache_folder="/tmp/sentence_transformers")
+        
         # Load arXiv metadata
         logger.info("Loading arXiv metadata from Kaggle...")
         metadata_df = load_arxiv_metadata()

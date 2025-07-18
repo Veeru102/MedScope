@@ -25,3 +25,4 @@ nltk==3.8.1
 chromadb==0.4.18
 kaggle==1.5.16
 sentence-transformers==2.2.2
+huggingface-hub==0.19.4
