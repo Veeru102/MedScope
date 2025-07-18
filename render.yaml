@@ -4,8 +4,13 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
     envVars:
       - key: PYTHONPATH
         value: /opt/render/project/src/backend
       - key: OPENAI_API_KEY
-        sync: false 
+        sync: false
+      - key: PORT
+        value: 8000
+      - key: ARXIV_LOAD_LIMIT
+        value: 100

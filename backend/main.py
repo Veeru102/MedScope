@@ -86,20 +86,30 @@ rage_engine = RAGEngine()
 # Define startup event to load the FAISS index
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Application startup: Loading FAISS index...")
-    try:
-        # Non-blocking FAISS index load
-        asyncio.create_task(load_faiss_index_background())
-    except Exception as e:
-        logger.error(f"Failed to start FAISS index loading task: {e}")
+    logger.info("Application startup: Server binding to port...")
     
-    # Initialize arXiv search system in background
-    logger.info("Application startup: Scheduling arXiv search initialization...")
-    try:
-        # Non-blocking arXiv search initialization
-        asyncio.create_task(initialize_arxiv_search_background())
-    except Exception as e:
-        logger.error(f"Failed to schedule arXiv search initialization: {e}")
+    # Delay the heavy initialization to ensure the server binds to the port first
+    async def delayed_initialization():
+        # Wait a short time to ensure server binds to port
+        await asyncio.sleep(2)
+        
+        logger.info("Application startup: Loading FAISS index...")
+        try:
+            # Non-blocking FAISS index load
+            asyncio.create_task(load_faiss_index_background())
+        except Exception as e:
+            logger.error(f"Failed to start FAISS index loading task: {e}")
+        
+        # Initialize arXiv search system in background
+        logger.info("Application startup: Scheduling arXiv search initialization...")
+        try:
+            # Non-blocking arXiv search initialization
+            asyncio.create_task(initialize_arxiv_search_background())
+        except Exception as e:
+            logger.error(f"Failed to schedule arXiv search initialization: {e}")
+    
+    # Schedule the delayed initialization
+    asyncio.create_task(delayed_initialization())
     
     logger.info("Application startup completed - server ready to accept connections")
 
@@ -153,21 +163,21 @@ class DeleteRequest(BaseModel):
     filename: str
 
 @app.get("/")
-async def root():
-    return {"message": "Welcome to MedCopilot API"}
+def root():
+    """
+    Root endpoint - using sync function for immediate response
+    """
+    return {"message": "Welcome to MedCopilot API", "status": "online"}
 
 @app.get("/healthz")
-async def health_check():
+def health_check():
     """
     Health check endpoint for monitoring service readiness
+    Using sync function for immediate response
     """
-    from arxiv_search import arxiv_state
-    
+    # Simple health check that doesn't import anything to ensure it responds immediately
     return {
         "status": "ok", 
-        "arxiv_ready": arxiv_state.is_initialized,
-        "arxiv_loading": arxiv_state.is_loading,
-        "arxiv_papers": arxiv_state.total_papers,
         "timestamp": datetime.now().isoformat()
     }
 
