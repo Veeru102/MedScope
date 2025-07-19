@@ -18,7 +18,7 @@ interface SimilarPapersResponse {
 
 interface SimilarPapersDisplayProps {
   summary: string;
-  filename: string;
+  filename: string; 
   backendUrl: string;
 }
 
@@ -64,7 +64,7 @@ const useSimilarPapers = (backendUrl: string) => {
 
 const SimilarPapersDisplay: React.FC<SimilarPapersDisplayProps> = ({ 
   summary, 
-  filename, // Kept for future use but currently unused
+  filename: _, 
   backendUrl 
 }) => {
   const { papers, loading, error, searchPerformed, searchSimilarPapers } = useSimilarPapers(backendUrl);
