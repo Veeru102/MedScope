@@ -55,7 +55,12 @@ app = FastAPI(title="MedCopilot API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://medscopefrontend.onrender.com"],  # Frontend URL
+    allow_origins=[
+        "http://localhost:5173",
+        "https://medscopefrontend.onrender.com",
+        "https://medscope.onrender.com",  # Main frontend URL
+        "https://medscope-frontend.onrender.com"  # Alternative frontend URL pattern
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
