@@ -2,8 +2,10 @@ services:
   - type: web
     name: medcopilot-backend
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install -r requirements.txt
+      cd backend && python download_nltk.py
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120 --log-level info --access-log
     healthCheckPath: /healthz
     envVars:
       - key: PYTHONPATH
@@ -13,4 +15,6 @@ services:
       - key: PORT
         value: 8000
       - key: ARXIV_LOAD_LIMIT
-        value: 100
+        value: 50
+      - key: NLTK_DATA
+        value: /opt/render/project/src/nltk_data

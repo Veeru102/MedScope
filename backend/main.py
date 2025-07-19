@@ -15,13 +15,34 @@ import numpy as np
 import sys
 import asyncio
 
-from document_processor import DocumentProcessor
-from rag_engine import RAGEngine
-from enhanced_document_processor import EnhancedDocumentProcessor
-from llm_services import LLMService
-from langchain_core.documents import Document # Import Document
-from langchain_community.document_loaders import PyMuPDFLoader # Updated import
-from arxiv_search import router as arxiv_router, startup_arxiv_search
+# Import with error handling to prevent startup crashes
+try:
+    from document_processor import DocumentProcessor
+    from rag_engine import RAGEngine
+    from enhanced_document_processor import EnhancedDocumentProcessor
+    from llm_services import LLMService
+    from langchain_core.documents import Document # Import Document
+    from langchain_community.document_loaders import PyMuPDFLoader # Updated import
+    from arxiv_search import router as arxiv_router, startup_arxiv_search
+    logger = logging.getLogger(__name__)
+    logger.info("All imports successful")
+except ImportError as e:
+    # Configure basic logging first
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.error(f"Import error: {e}")
+    logger.error("Some modules failed to import - server may have limited functionality")
+    # Create dummy objects to prevent crashes
+    class DummyProcessor:
+        pass
+    DocumentProcessor = DummyProcessor
+    RAGEngine = DummyProcessor
+    EnhancedDocumentProcessor = DummyProcessor
+    LLMService = DummyProcessor
+    Document = dict
+    PyMuPDFLoader = DummyProcessor
+    arxiv_router = None
+    startup_arxiv_search = lambda: None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -82,7 +103,11 @@ app.add_middleware(
 )
 
 # Include arXiv search router
-app.include_router(arxiv_router)
+if arxiv_router:
+    app.include_router(arxiv_router)
+    logger.info("ArXiv search router included")
+else:
+    logger.warning("ArXiv search router not available")
 
 # Create uploads directory if it doesn't exist
 UPLOAD_DIR = "uploads"
@@ -126,15 +151,17 @@ async def startup_event():
     # Delay the heavy initialization to ensure the server binds to the port first
     async def delayed_initialization():
         try:
-            # Wait a short time to ensure server binds to port
-            await asyncio.sleep(2)
+            # Wait longer to ensure server binds to port first
+            await asyncio.sleep(5)
             
             # Load FAISS index only if not already loaded
             if not startup_state["faiss_initialized"]:
                 logger.info("Application startup: Loading FAISS index...")
                 try:
-                    # Non-blocking FAISS index load
-                    asyncio.create_task(load_faiss_index_background())
+                    # Non-blocking FAISS index load with timeout protection
+                    task = asyncio.create_task(load_faiss_index_background())
+                    # Don't wait for completion to avoid blocking startup
+                    logger.info("FAISS index loading task created")
                 except Exception as e:
                     logger.error(f"Failed to start FAISS index loading task: {e}")
             else:
@@ -144,17 +171,22 @@ async def startup_event():
             if not startup_state["arxiv_initialized"]:
                 logger.info("Application startup: Scheduling arXiv search initialization...")
                 try:
-                    # Non-blocking arXiv search initialization
-                    asyncio.create_task(initialize_arxiv_search_background())
+                    # Non-blocking arXiv search initialization with timeout protection
+                    task = asyncio.create_task(initialize_arxiv_search_background())
+                    # Don't wait for completion to avoid blocking startup
+                    logger.info("ArXiv search initialization task created")
                 except Exception as e:
                     logger.error(f"Failed to schedule arXiv search initialization: {e}")
             else:
                 logger.info("ArXiv search already initialized, skipping")
                 
+        except Exception as e:
+            logger.error(f"Error in delayed initialization: {e}")
+            # Don't let initialization errors crash the server
         finally:
             startup_state["startup_in_progress"] = False
     
-    # Schedule the delayed initialization
+    # Schedule the delayed initialization without waiting for it
     asyncio.create_task(delayed_initialization())
     
     logger.info("Application startup completed - server ready to accept connections")
@@ -167,9 +199,23 @@ async def load_faiss_index_background():
             return
             
         logger.info("Background task: Loading FAISS index...")
-        rage_engine.load_vector_store()
-        startup_state["faiss_initialized"] = True
-        logger.info("Background task: FAISS index loaded successfully")
+        
+        # Add timeout protection
+        try:
+            # Use asyncio.wait_for to add timeout protection
+            await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(
+                    None, rage_engine.load_vector_store
+                ), 
+                timeout=30.0  # 30 second timeout
+            )
+            startup_state["faiss_initialized"] = True
+            logger.info("Background task: FAISS index loaded successfully")
+        except asyncio.TimeoutError:
+            logger.warning("FAISS index loading timed out, will retry later")
+        except Exception as e:
+            logger.error(f"Error loading FAISS index: {e}")
+            
     except Exception as e:
         logger.error(f"Background task: Failed to load FAISS index: {e}")
 
@@ -181,9 +227,17 @@ async def initialize_arxiv_search_background():
             return
             
         logger.info("Background task: Starting arXiv search initialization...")
-        await startup_arxiv_search()
-        startup_state["arxiv_initialized"] = True
-        logger.info("Background task: ArXiv search initialized successfully")
+        
+        # Add timeout protection
+        try:
+            await asyncio.wait_for(startup_arxiv_search(), timeout=60.0)  # 60 second timeout
+            startup_state["arxiv_initialized"] = True
+            logger.info("Background task: ArXiv search initialized successfully")
+        except asyncio.TimeoutError:
+            logger.warning("ArXiv search initialization timed out, will be unavailable")
+        except Exception as e:
+            logger.error(f"ArXiv search initialization error: {e}")
+            
     except Exception as e:
         logger.error(f"Background task: Failed to initialize arXiv search: {e}")
         # Don't mark as initialized if it failed, but don't crash the server
