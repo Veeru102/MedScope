@@ -114,6 +114,7 @@ const Sidebar: React.FC<{ files: string[], onSummarize: (filename: string) => vo
 const PDFUpload: React.FC<{ onUpload: (file: File) => void, uploading: boolean }> = ({ onUpload, uploading }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -147,10 +148,62 @@ const PDFUpload: React.FC<{ onUpload: (file: File) => void, uploading: boolean }
     }
   }, [onUpload]);
 
+  // Test backend connectivity function
+  const testBackendConnection = async () => {
+    setTestingConnection(true);
+    try {
+      console.log("Testing backend connection...");
+      
+      // Test health endpoint
+      const healthRes = await fetch(`${BACKEND_URL}/healthz`, {
+        method: "GET",
+        mode: 'cors',
+        credentials: 'omit',
+      });
+      
+      if (healthRes.ok) {
+        const healthData = await healthRes.json();
+        console.log("Health check successful:", healthData);
+        
+        // Test upload endpoint availability
+        const testRes = await fetch(`${BACKEND_URL}/test-upload`, {
+          method: "GET",
+          mode: 'cors',
+          credentials: 'omit',
+        });
+        
+        if (testRes.ok) {
+          const testData = await testRes.json();
+          console.log("Upload endpoint test successful:", testData);
+          alert("Backend connection successful!\n\nBoth health check and upload endpoint are accessible.");
+        } else {
+          alert(`Health check passed but upload endpoint test failed.\nStatus: ${testRes.status}`);
+        }
+      } else {
+        alert(`Backend health check failed.\nStatus: ${healthRes.status}\nURL: ${BACKEND_URL}/healthz`);
+      }
+    } catch (error) {
+      console.error("Connection test failed:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert(`Backend connection failed!\n\nError: ${errorMessage}\n\nURL: ${BACKEND_URL}\n\nThis suggests the backend server is not running or not accessible.`);
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   return (
     // Card container
     <div className="bg-white rounded-lg shadow-lg p-6 mb-8 border border-blue-200">
-      <h3 className="text-xl font-semibold mb-4 text-blue-800">Upload Document</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-blue-800">Upload Document</h3>
+        <button
+          onClick={testBackendConnection}
+          disabled={testingConnection}
+          className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+        >
+          {testingConnection ? "Testing..." : "Test Backend"}
+        </button>
+      </div>
       
       <div 
         className={`border-2 rounded-lg p-8 text-center transition-all duration-200 
@@ -636,9 +689,31 @@ const App: React.FC = () => {
     console.log(`Attempting to upload file to ${BACKEND_URL}/upload`);
     console.log(`File name: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
     
+    // First, test if the backend is reachable
+    try {
+      console.log("Testing backend connectivity...");
+      const healthRes = await fetch(`${BACKEND_URL}/healthz`, {
+        method: "GET",
+        mode: 'cors',
+        credentials: 'omit',
+      });
+      console.log(`Health check status: ${healthRes.status}`);
+      if (healthRes.ok) {
+        const healthData = await healthRes.json();
+        console.log("Backend health check:", healthData);
+      }
+    } catch (healthError) {
+      console.error("Backend connectivity test failed:", healthError);
+      const errorMessage = healthError instanceof Error ? healthError.message : String(healthError);
+      alert(`Backend is not reachable. Error: ${errorMessage}. Please check if the backend is running at ${BACKEND_URL}`);
+      setUploading(false);
+      return;
+    }
+    
     try {
       // Fix for PDF upload fetch issue: Try with 'omit' credentials mode
       // This is often more compatible with cross-origin requests when cookies aren't needed
+      console.log("Attempting PDF upload...");
       const res = await fetch(`${BACKEND_URL}/upload`, {
         method: "POST",
         body: formData,
@@ -683,7 +758,21 @@ const App: React.FC = () => {
       console.error("Upload error:", err);
       // Enhanced error message with more details
       const errorMessage = err instanceof Error ? err.message : String(err);
-      alert(`Failed to upload PDF: ${errorMessage}. Please check console for details.`);
+      
+      // Provide specific guidance based on error type
+      let userMessage = `Failed to upload PDF: ${errorMessage}`;
+      if (errorMessage.includes("Failed to fetch") || errorMessage.includes("NetworkError")) {
+        userMessage += "\n\nThis appears to be a network connectivity issue. Please check:\n";
+        userMessage += "1. Your internet connection\n";
+        userMessage += "2. If the backend server is running\n";
+        userMessage += "3. If there are any firewall or proxy issues";
+      } else if (errorMessage.includes("CORS")) {
+        userMessage += "\n\nThis appears to be a CORS (Cross-Origin) issue.";
+      } else if (errorMessage.includes("400") || errorMessage.includes("413")) {
+        userMessage += "\n\nThe file may be too large or in an invalid format.";
+      }
+      
+      alert(userMessage);
     } finally {
       setUploading(false);
     }

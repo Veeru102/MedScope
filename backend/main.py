@@ -67,8 +67,15 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "https://medpub-frontend.onrender.com",
+        # Add more comprehensive frontend URL patterns
+        "https://medscope-frontend.onrender.com",
+        "https://medpub-frontend.onrender.com", 
+        "https://medpubfrontend.onrender.com",
+        "https://medscopefe.onrender.com",
+        # Add null origin for local testing
+        "null",
     ],
-    allow_credentials=True,
+    allow_credentials=False,  # Temporarily disable credentials to test if this is causing issues
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],  # Fix for PDF upload: Expose headers needed for file handling
@@ -216,7 +223,17 @@ def root():
     """
     Root endpoint - using sync function for immediate response
     """
-    return {"message": "Welcome to MedCopilot API", "status": "online"}
+    logger.info("=== ROOT ENDPOINT ACCESSED ===")
+    return {
+        "message": "Welcome to MedCopilot API", 
+        "status": "online",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "health": "/healthz",
+            "upload": "/upload",
+            "test_upload": "/test-upload"
+        }
+    }
 
 @app.get("/healthz")
 def health_check():
