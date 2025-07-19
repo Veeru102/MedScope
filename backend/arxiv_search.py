@@ -60,16 +60,23 @@ async def initialize_arxiv_search():
     global arxiv_state
     
     with arxiv_state.lock:
-        if arxiv_state.is_initialized or arxiv_state.is_loading:
-            logger.info("ArXiv search already initialized or loading")
+        if arxiv_state.is_initialized:
+            logger.info("ArXiv search already initialized, skipping")
+            return
+        
+        if arxiv_state.is_loading:
+            logger.info("ArXiv search initialization already in progress, waiting...")
+            # Wait for the other initialization to complete
+            while arxiv_state.is_loading:
+                await asyncio.sleep(1)
             return
         
         arxiv_state.is_loading = True
         logger.info("Starting arXiv search initialization...")
     
     try:
-        # Use environment variable to limit the number of papers for memory constraints
-        limit = int(os.environ.get("ARXIV_LOAD_LIMIT", "1000"))  # Default to 1000 papers for Render
+        # Fix for backend restart issue: Use smaller limit and add memory checks
+        limit = int(os.environ.get("ARXIV_LOAD_LIMIT", "500"))  # Reduced from 1000 to 500
         logger.info(f"Using ARXIV_LOAD_LIMIT={limit} to conserve memory")
         
         # Load arXiv metadata with limit
@@ -78,7 +85,14 @@ async def initialize_arxiv_search():
         
         if metadata_df.empty:
             logger.warning("No arXiv metadata loaded")
+            with arxiv_state.lock:
+                arxiv_state.is_loading = False
             return
+        
+        # Limit the dataset size to prevent memory issues
+        if len(metadata_df) > limit:
+            metadata_df = metadata_df.head(limit)
+            logger.info(f"Limited dataset to {limit} papers for memory conservation")
         
         logger.info(f"Loaded {len(metadata_df)} arXiv papers")
         
@@ -107,7 +121,8 @@ async def initialize_arxiv_search():
         logger.error(f"Failed to initialize arXiv search: {e}")
         with arxiv_state.lock:
             arxiv_state.is_loading = False
-        raise
+        # Don't raise the exception to prevent server crashes
+        logger.warning("ArXiv search will be unavailable, but server will continue running")
 
 @router.post("/search", response_model=ArxivSearchResponse)
 async def search_arxiv_papers(request: ArxivSearchRequest):

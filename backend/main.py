@@ -94,32 +94,58 @@ llm_service = LLMService()
 # Initialize RAGEngine globally
 rage_engine = RAGEngine()
 
+# Fix for backend restart issue: Add startup state tracking
+startup_state = {
+    "faiss_initialized": False,
+    "arxiv_initialized": False,
+    "startup_in_progress": False
+}
+
 # We'll use arxiv_state.is_initialized from arxiv_search module to track readiness
 
 # Define startup event to load the FAISS index
 @app.on_event("startup")
 async def startup_event():
+    global startup_state
+    
+    # Prevent duplicate startup tasks
+    if startup_state["startup_in_progress"]:
+        logger.info("Startup already in progress, skipping duplicate initialization")
+        return
+    
+    startup_state["startup_in_progress"] = True
     logger.info("Application startup: Server binding to port...")
     
     # Delay the heavy initialization to ensure the server binds to the port first
     async def delayed_initialization():
-        # Wait a short time to ensure server binds to port
-        await asyncio.sleep(2)
-        
-        logger.info("Application startup: Loading FAISS index...")
         try:
-            # Non-blocking FAISS index load
-            asyncio.create_task(load_faiss_index_background())
-        except Exception as e:
-            logger.error(f"Failed to start FAISS index loading task: {e}")
-        
-        # Initialize arXiv search system in background
-        logger.info("Application startup: Scheduling arXiv search initialization...")
-        try:
-            # Non-blocking arXiv search initialization
-            asyncio.create_task(initialize_arxiv_search_background())
-        except Exception as e:
-            logger.error(f"Failed to schedule arXiv search initialization: {e}")
+            # Wait a short time to ensure server binds to port
+            await asyncio.sleep(2)
+            
+            # Load FAISS index only if not already loaded
+            if not startup_state["faiss_initialized"]:
+                logger.info("Application startup: Loading FAISS index...")
+                try:
+                    # Non-blocking FAISS index load
+                    asyncio.create_task(load_faiss_index_background())
+                except Exception as e:
+                    logger.error(f"Failed to start FAISS index loading task: {e}")
+            else:
+                logger.info("FAISS index already initialized, skipping")
+            
+            # Initialize arXiv search system only if not already initialized
+            if not startup_state["arxiv_initialized"]:
+                logger.info("Application startup: Scheduling arXiv search initialization...")
+                try:
+                    # Non-blocking arXiv search initialization
+                    asyncio.create_task(initialize_arxiv_search_background())
+                except Exception as e:
+                    logger.error(f"Failed to schedule arXiv search initialization: {e}")
+            else:
+                logger.info("ArXiv search already initialized, skipping")
+                
+        finally:
+            startup_state["startup_in_progress"] = False
     
     # Schedule the delayed initialization
     asyncio.create_task(delayed_initialization())
@@ -129,8 +155,13 @@ async def startup_event():
 async def load_faiss_index_background():
     """Load FAISS index in the background without blocking startup"""
     try:
+        if startup_state["faiss_initialized"]:
+            logger.info("FAISS index already loaded, skipping")
+            return
+            
         logger.info("Background task: Loading FAISS index...")
         rage_engine.load_vector_store()
+        startup_state["faiss_initialized"] = True
         logger.info("Background task: FAISS index loaded successfully")
     except Exception as e:
         logger.error(f"Background task: Failed to load FAISS index: {e}")
@@ -138,12 +169,17 @@ async def load_faiss_index_background():
 async def initialize_arxiv_search_background():
     """Initialize arXiv search in the background without blocking startup"""
     try:
+        if startup_state["arxiv_initialized"]:
+            logger.info("ArXiv search already initialized, skipping")
+            return
+            
         logger.info("Background task: Starting arXiv search initialization...")
         await startup_arxiv_search()
+        startup_state["arxiv_initialized"] = True
         logger.info("Background task: ArXiv search initialized successfully")
     except Exception as e:
         logger.error(f"Background task: Failed to initialize arXiv search: {e}")
-
+        # Don't mark as initialized if it failed, but don't crash the server
 
 class SummarizeRequest(BaseModel):
     filename: str
@@ -188,10 +224,14 @@ def health_check():
     Health check endpoint for monitoring service readiness
     Using sync function for immediate response
     """
-    # Simple health check that doesn't import anything to ensure it responds immediately
+    # Enhanced health check with initialization status
     return {
         "status": "ok", 
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "startup_state": startup_state,
+        "upload_dir_exists": os.path.exists(UPLOAD_DIR),
+        "faiss_ready": rage_engine.vector_store is not None,
+        "message": "Server is running and ready to accept requests"
     }
 
 @app.options("/upload")
@@ -200,10 +240,24 @@ def upload_options():
     Handle OPTIONS preflight requests for the upload endpoint
     This helps debug CORS issues with the upload endpoint
     """
+    logger.info("=== UPLOAD OPTIONS REQUEST RECEIVED ===")
     return {
         "message": "Upload endpoint CORS preflight request successful",
         "allowed_methods": ["POST"],
         "allowed_headers": ["*"]
+    }
+
+@app.get("/test-upload")
+def test_upload_endpoint():
+    """
+    Test endpoint to verify upload route is registered and working
+    """
+    logger.info("=== UPLOAD TEST ENDPOINT CALLED ===")
+    return {
+        "message": "Upload endpoint is registered and accessible",
+        "upload_dir": UPLOAD_DIR,
+        "upload_dir_exists": os.path.exists(UPLOAD_DIR),
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/files/{filename}")
@@ -236,12 +290,14 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     Upload a PDF file for processing
     """
-    # Log the upload request for debugging
+    # Fix for PDF upload issue: Add comprehensive logging
+    logger.info("=== PDF UPLOAD REQUEST RECEIVED ===")
     logger.info(f"Received upload request for file: {file.filename}")
     logger.info(f"Content-Type: {file.content_type}")
+    logger.info(f"File size: {file.size if hasattr(file, 'size') else 'unknown'} bytes")
     
     # Validate file extension
-    if not file.filename.endswith('.pdf'):
+    if not file.filename or not file.filename.endswith('.pdf'):
         logger.warning(f"Invalid file type attempted: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
@@ -250,6 +306,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     filename = f"{timestamp}_{file.filename}"
     file_path = os.path.join(UPLOAD_DIR, filename)
     
+    logger.info(f"Generated filename: {filename}")
+    logger.info(f"File will be saved to: {file_path}")
+    
     # Save the file
     try:
         # Fix for PDF upload issue: Add more detailed logging
@@ -257,16 +316,32 @@ async def upload_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         logger.info(f"File read complete. Size: {len(contents)} bytes")
         
+        if len(contents) == 0:
+            logger.error("File contents are empty")
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        
         with open(file_path, "wb") as f:
             f.write(contents)
         logger.info(f"File saved successfully: {file_path}")
+        
+        # Verify file was saved correctly
+        if os.path.exists(file_path):
+            saved_size = os.path.getsize(file_path)
+            logger.info(f"File verification: saved size = {saved_size} bytes")
+        else:
+            logger.error(f"File was not saved correctly: {file_path}")
+            raise HTTPException(status_code=500, detail="File save verification failed")
+            
     except Exception as e:
         logger.error(f"Error saving file {filename}: {e}")
-        # Return a more detailed error message
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error saving file: {str(e)}. Please check file permissions and disk space."
-        )
+        # Clean up partial file if it exists
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Cleaned up partial file: {file_path}")
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
     
     # Process the file into Langchain Documents
     try:

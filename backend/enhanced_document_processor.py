@@ -9,11 +9,25 @@ import re
 import nltk
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-# Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# Fix for backend restart issue: Download NLTK data only once and conditionally
+def ensure_nltk_data():
+    """Ensure NLTK punkt data is available without repeated downloads"""
+    try:
+        # Check if punkt data is already available
+        nltk.data.find('tokenizers/punkt')
+        logging.getLogger(__name__).info("NLTK punkt data already available")
+    except LookupError:
+        logging.getLogger(__name__).info("Downloading NLTK punkt data (one-time setup)")
+        try:
+            nltk.download('punkt', quiet=True)
+            logging.getLogger(__name__).info("NLTK punkt data downloaded successfully")
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to download NLTK punkt data: {e}")
+            # Continue without punkt if download fails
+            pass
+
+# Initialize NLTK data once
+ensure_nltk_data()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
