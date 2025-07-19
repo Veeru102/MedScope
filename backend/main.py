@@ -59,11 +59,19 @@ app.add_middleware(
         "http://localhost:5173",
         "https://medscopefrontend.onrender.com",
         "https://medscope.onrender.com",  # Main frontend URL
-        "https://medscope-frontend.onrender.com"  # Alternative frontend URL pattern
+        "https://medscope-frontend.onrender.com",  # Alternative frontend URL pattern
+        # Fix for PDF upload fetch issue: Add additional origins that might be used
+        "https://medpub.onrender.com",
+        # Remove wildcard origin as it's not allowed with credentials=True
+        # Instead, add specific origins that might be accessing the API
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "https://medpub-frontend.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # Fix for PDF upload: Expose headers needed for file handling
 )
 
 # Include arXiv search router
@@ -230,6 +238,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     # Log the upload request for debugging
     logger.info(f"Received upload request for file: {file.filename}")
+    logger.info(f"Content-Type: {file.content_type}")
     
     # Validate file extension
     if not file.filename.endswith('.pdf'):
@@ -243,7 +252,11 @@ async def upload_pdf(file: UploadFile = File(...)):
     
     # Save the file
     try:
+        # Fix for PDF upload issue: Add more detailed logging
+        logger.info(f"Starting to read file contents for {file.filename}")
         contents = await file.read()
+        logger.info(f"File read complete. Size: {len(contents)} bytes")
+        
         with open(file_path, "wb") as f:
             f.write(contents)
         logger.info(f"File saved successfully: {file_path}")

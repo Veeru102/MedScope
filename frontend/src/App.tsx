@@ -634,22 +634,44 @@ const App: React.FC = () => {
     
     // Log upload attempt for debugging
     console.log(`Attempting to upload file to ${BACKEND_URL}/upload`);
+    console.log(`File name: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
     
     try {
-      // Enhanced fetch with explicit mode and credentials
+      // Fix for PDF upload fetch issue: Try with 'omit' credentials mode
+      // This is often more compatible with cross-origin requests when cookies aren't needed
       const res = await fetch(`${BACKEND_URL}/upload`, {
         method: "POST",
         body: formData,
         // Don't set Content-Type header - browser will set it with boundary for FormData
         mode: 'cors', // Explicitly request CORS
-        credentials: 'same-origin', // Adjust if needed for cross-origin requests
+        credentials: 'omit', // Changed to 'omit' as we don't need cookies for this request
       });
       
       // Log response status for debugging
       console.log(`Upload response status: ${res.status}`);
       
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      // Fix for PDF upload: More detailed error handling
+      if (!res.ok) {
+        let errorDetail = `HTTP error! status: ${res.status}`;
+        try {
+          // Try to get more detailed error information from response
+          const errorData = await res.json();
+          errorDetail += ` - ${errorData.detail || JSON.stringify(errorData)}`;
+        } catch (parseError) {
+          // If can't parse JSON, try to get text
+          try {
+            const errorText = await res.text();
+            errorDetail += ` - ${errorText.substring(0, 100)}`;
+          } catch (textError) {
+            // If can't get text either, just use status
+            console.error("Couldn't parse error response:", textError);
+          }
+        }
+        throw new Error(errorDetail);
+      }
+      
       const data = await res.json();
+      console.log("Upload successful, response data:", data);
       setUploadedFiles((prev) => [...prev, data.filename]);
       // Clear summary if file is re-uploaded or new file is uploaded
       setSummaries(prev => { delete prev[data.filename]; return { ...prev }; });
