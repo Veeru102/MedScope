@@ -186,6 +186,18 @@ def health_check():
         "timestamp": datetime.now().isoformat()
     }
 
+@app.options("/upload")
+def upload_options():
+    """
+    Handle OPTIONS preflight requests for the upload endpoint
+    This helps debug CORS issues with the upload endpoint
+    """
+    return {
+        "message": "Upload endpoint CORS preflight request successful",
+        "allowed_methods": ["POST"],
+        "allowed_headers": ["*"]
+    }
+
 @app.get("/files/{filename}")
 async def serve_pdf(filename: str):
     """
@@ -216,6 +228,10 @@ async def upload_pdf(file: UploadFile = File(...)):
     """
     Upload a PDF file for processing
     """
+    # Log the upload request for debugging
+    logger.info(f"Received upload request for file: {file.filename}")
+    
+    # Validate file extension
     if not file.filename.endswith('.pdf'):
         logger.warning(f"Invalid file type attempted: {file.filename}")
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
@@ -233,7 +249,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         logger.info(f"File saved successfully: {file_path}")
     except Exception as e:
         logger.error(f"Error saving file {filename}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+        # Return a more detailed error message
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error saving file: {str(e)}. Please check file permissions and disk space."
+        )
     
     # Process the file into Langchain Documents
     try:

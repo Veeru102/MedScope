@@ -631,11 +631,23 @@ const App: React.FC = () => {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    
+    // Log upload attempt for debugging
+    console.log(`Attempting to upload file to ${BACKEND_URL}/upload`);
+    
     try {
+      // Enhanced fetch with explicit mode and credentials
       const res = await fetch(`${BACKEND_URL}/upload`, {
         method: "POST",
         body: formData,
+        // Don't set Content-Type header - browser will set it with boundary for FormData
+        mode: 'cors', // Explicitly request CORS
+        credentials: 'same-origin', // Adjust if needed for cross-origin requests
       });
+      
+      // Log response status for debugging
+      console.log(`Upload response status: ${res.status}`);
+      
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       setUploadedFiles((prev) => [...prev, data.filename]);
@@ -647,7 +659,9 @@ const App: React.FC = () => {
       fetchRelatedDocuments(data.filename);
     } catch (err) {
       console.error("Upload error:", err);
-      alert(`Failed to upload PDF: ${err}`); // Suggestion: Use a better notification system
+      // Enhanced error message with more details
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`Failed to upload PDF: ${errorMessage}. Please check console for details.`);
     } finally {
       setUploading(false);
     }
